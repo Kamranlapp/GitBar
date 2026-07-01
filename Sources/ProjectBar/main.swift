@@ -1,8 +1,8 @@
 import AppKit
 
-private let columnWidth: CGFloat = 161
+private let columnWidth: CGFloat = 120
 private let columnContentWidth: CGFloat = columnWidth - 20
-private let actionButtonWidth: CGFloat = 94
+private let actionButtonWidth: CGFloat = 100
 private let controlHeight: CGFloat = 32
 private let buttonVerticalSpacing: CGFloat = 6
 private let actionButtonCount: CGFloat = 7
@@ -26,9 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         installEditMenu()
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "ProjectBar")
-            button.imagePosition = .imageLeading
-            button.title = "PB"
+            button.image = makeStatusBarIcon()
+            button.imagePosition = .imageOnly
+            button.title = ""
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -39,6 +39,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.delegate = self
         popover.contentViewController = controller
+    }
+
+    private func makeStatusBarIcon() -> NSImage? {
+        let sourceImage = Bundle.main.url(forResource: "GitSync", withExtension: "png")
+            .flatMap(NSImage.init(contentsOf:))
+            ?? NSImage(systemSymbolName: "terminal", accessibilityDescription: "ProjectBar")
+        guard let sourceImage else { return nil }
+
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSBezierPath(roundedRect: NSRect(origin: .zero, size: size), xRadius: 4, yRadius: 4).addClip()
+        sourceImage.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .sourceOver, fraction: 1)
+        image.unlockFocus()
+        image.isTemplate = true
+        return image
     }
 
     @objc private func togglePopover() {
@@ -217,6 +233,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
     private let projectMenu = NSMenu()
 
     private var orderedProjects: [Project] = []
+    private var statusResetWorkItem: DispatchWorkItem?
 
     init(store: ProjectStore) {
         self.store = store
@@ -356,11 +373,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.translatesAutoresizingMaskIntoConstraints = false
 
-        let addButton = NSButton(title: "+", target: self, action: #selector(addProject))
-        addButton.bezelStyle = .regularSquare
-        addButton.isBordered = false
-        addButton.font = .systemFont(ofSize: 18, weight: .light)
-        addButton.alignment = .center
+        let addButton = AddProjectButton(target: self, action: #selector(addProject))
         addButton.toolTip = "Add Project"
         addButton.translatesAutoresizingMaskIntoConstraints = false
 
@@ -388,7 +401,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         contentPanel.translatesAutoresizingMaskIntoConstraints = false
 
         projectStack.orientation = .vertical
-        projectStack.alignment = .trailing
+        projectStack.alignment = .centerX
         projectStack.spacing = buttonVerticalSpacing
         projectStack.translatesAutoresizingMaskIntoConstraints = false
         contentPanel.addSubview(projectStack)
@@ -443,7 +456,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         contentPanel.addSubview(contentStack)
 
         actionsStack.orientation = .vertical
-        actionsStack.alignment = .leading
+        actionsStack.alignment = .centerX
         actionsStack.spacing = buttonVerticalSpacing
         [
             actionButton("Pull", #selector(runPull)),
@@ -462,7 +475,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         contentStack.addArrangedSubview(actionsContainer)
         NSLayoutConstraint.activate([
             actionsContainer.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            actionsStack.leadingAnchor.constraint(equalTo: actionsContainer.leadingAnchor),
+            actionsStack.centerXAnchor.constraint(equalTo: actionsContainer.centerXAnchor),
             actionsStack.topAnchor.constraint(equalTo: actionsContainer.topAnchor),
             actionsStack.bottomAnchor.constraint(equalTo: actionsContainer.bottomAnchor)
         ])
@@ -543,11 +556,8 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         return row
     }
 
-    private func actionButton(_ title: String, _ action: Selector) -> NSButton {
-        let button = NSButton(title: title, target: self, action: action)
-        button.bezelStyle = .rounded
-        button.controlSize = .regular
-        button.alignment = .center
+    private func actionButton(_ title: String, _ action: Selector) -> GlassButton {
+        let button = GlassButton(title: title, target: self, action: action)
         button.widthAnchor.constraint(equalToConstant: actionButtonWidth).isActive = true
         button.heightAnchor.constraint(equalToConstant: controlHeight).isActive = true
         return button
@@ -573,9 +583,6 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
 
         for (index, project) in orderedProjects.enumerated() {
             let button = ProjectButton(title: project.name, target: self, action: #selector(projectButtonClicked))
-            button.bezelStyle = .rounded
-            button.controlSize = .regular
-            button.alignment = .center
             button.widthAnchor.constraint(equalToConstant: actionButtonWidth).isActive = true
             button.heightAnchor.constraint(equalToConstant: controlHeight).isActive = true
             button.tag = index
@@ -680,11 +687,11 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
     }
 
     @objc private func runStatus() {
-        runShort("git status --short --branch", label: "git status")
+        runShort("git status --short --branch", label: "status")
     }
 
     @objc private func runPull() {
-        runShort("git pull --ff-only", label: "git pull")
+        runShort("git pull --ff-only", label: "pull")
     }
 
     @objc private func runPush() {
@@ -694,19 +701,19 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
             return
         }
 
-        setStatus("Running git push...")
-        appendLog("$ git push\n")
+        setStatus("Running sync...")
+        appendLog("$ git add -A && git commit && git push\n")
 
         runner.push(project: project) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let output):
-                    self?.setStatus("git push complete")
+                    self?.setStatus("sync complete")
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
-                    self?.setStatus("git push failed")
+                    self?.setStatus("sync failed")
                     self?.appendLog("\(error.localizedDescription)\n")
-                    self?.showCommandFailure(title: "git push failed", message: error.localizedDescription)
+                    self?.showCommandFailure(title: "sync failed", message: error.localizedDescription)
                 }
             }
         }
@@ -758,7 +765,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
             return
         }
         NSWorkspace.shared.open(url)
-        setStatus("Opened \(project.localhostURL)")
+        setStatus("Open LH")
     }
 
     private func runShort(_ command: String, label: String) {
@@ -788,8 +795,21 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
 
     private func setStatus(_ text: String) {
         statusLabel.stringValue = text
+        statusResetWorkItem?.cancel()
+
         guard settingsOverlay.isHidden else { return }
-        titleLabel.stringValue = text == "Ready" ? "Actions" : text
+        if text == "Ready" {
+            titleLabel.stringValue = "Actions"
+            return
+        }
+
+        titleLabel.stringValue = text
+        let resetWorkItem = DispatchWorkItem { [weak self] in
+            guard let self, self.settingsOverlay.isHidden else { return }
+            self.titleLabel.stringValue = "Actions"
+        }
+        statusResetWorkItem = resetWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: resetWorkItem)
     }
 
     private func showCommandFailure(title: String, message: String) {
@@ -840,7 +860,136 @@ final class ContentPanelView: NSView {
     }
 }
 
-final class ProjectButton: NSButton {
+class GlassButton: NSControl {
+    private let effectView = NSVisualEffectView()
+    private let dimView = NSView()
+    private let titleLabel = NSTextField(labelWithString: "")
+    private var trackingArea: NSTrackingArea?
+    private var isPressed = false {
+        didSet { updateState() }
+    }
+    private var isHovering = false {
+        didSet { updateState() }
+    }
+
+    init(title: String, target: AnyObject?, action: Selector) {
+        super.init(frame: .zero)
+        self.target = target
+        self.action = action
+        setup(title: title)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setup(title: "")
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        isPressed = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        isPressed = false
+
+        if bounds.contains(convert(event.locationInWindow, from: nil)), let action {
+            NSApp.sendAction(action, to: target, from: self)
+        }
+    }
+
+    private func setup(title: String) {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+
+        effectView.material = .popover
+        effectView.blendingMode = .withinWindow
+        effectView.state = .active
+        effectView.wantsLayer = true
+        effectView.layer?.cornerRadius = 8
+        effectView.layer?.masksToBounds = true
+        effectView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(effectView)
+
+        dimView.wantsLayer = true
+        dimView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.5).cgColor
+        dimView.layer?.cornerRadius = 8
+        dimView.layer?.masksToBounds = true
+        dimView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(dimView)
+
+        titleLabel.stringValue = title
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.textColor = .labelColor
+        titleLabel.alignment = .center
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(title)
+
+        NSLayoutConstraint.activate([
+            effectView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            effectView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            effectView.topAnchor.constraint(equalTo: topAnchor),
+            effectView.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            dimView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            dimView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            dimView.topAnchor.constraint(equalTo: topAnchor),
+            dimView.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+
+        updateState()
+    }
+
+    private func updateState() {
+        let alpha: CGFloat
+        if isPressed {
+            alpha = 0.64
+        } else if isHovering {
+            alpha = 0.44
+        } else {
+            alpha = 0.5
+        }
+        dimView.layer?.backgroundColor = NSColor.black.withAlphaComponent(alpha).cgColor
+    }
+}
+
+final class ProjectButton: GlassButton {
     var contextMenu: NSMenu?
 
     override func rightMouseDown(with event: NSEvent) {
@@ -852,6 +1001,61 @@ final class ProjectButton: NSButton {
             NSMenu.popUpContextMenu(contextMenu, with: event, for: self)
         } else {
             super.rightMouseDown(with: event)
+        }
+    }
+}
+
+final class AddProjectButton: NSControl {
+    private var isPressed = false
+
+    init(target: AnyObject?, action: Selector) {
+        super.init(frame: .zero)
+        self.target = target
+        self.action = action
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Add Project")
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        let lineLength: CGFloat = 12
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let plusPath = NSBezierPath()
+        plusPath.lineWidth = 2.1
+        plusPath.lineCapStyle = .round
+        plusPath.move(to: CGPoint(x: center.x - lineLength / 2, y: center.y))
+        plusPath.line(to: CGPoint(x: center.x + lineLength / 2, y: center.y))
+        plusPath.move(to: CGPoint(x: center.x, y: center.y - lineLength / 2))
+        plusPath.line(to: CGPoint(x: center.x, y: center.y + lineLength / 2))
+
+        NSColor.labelColor.withAlphaComponent(isPressed ? 0.55 : 0.85).setStroke()
+        plusPath.stroke()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        isPressed = true
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        isPressed = false
+        needsDisplay = true
+
+        if bounds.contains(convert(event.locationInWindow, from: nil)), let action {
+            NSApp.sendAction(action, to: target, from: self)
         }
     }
 }
@@ -898,7 +1102,7 @@ final class CommandRunner {
             do {
                 let output: String
                 if self.isGitRepository(at: project.path) {
-                    output = try self.runShell("git push", in: project.path)
+                    output = try self.runShell(Self.syncPushCommand(), in: project.path)
                 } else {
                     guard let repoURL = project.repoURL?.trimmingCharacters(in: .whitespacesAndNewlines),
                           !repoURL.isEmpty else {
@@ -987,9 +1191,23 @@ final class CommandRunner {
         git init &&
         git branch -M main &&
         git remote add origin '\(escapedRepoURL)' &&
+        \(syncPushCommand())
+        """
+    }
+
+    private static func syncPushCommand() -> String {
+        """
         git add -A &&
-        git diff --cached --quiet || git commit -m 'Initial commit' &&
-        git push -u origin main
+        if git diff --cached --quiet; then
+          echo 'No local changes to commit.'
+        else
+          git commit -m 'Sync changes'
+        fi &&
+        if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
+          git push
+        else
+          git push -u origin HEAD
+        fi
         """
     }
 
