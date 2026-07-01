@@ -3,17 +3,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "ProjectBar",
+    name: "GitBar",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "ProjectBar", targets: ["ProjectBar"])
+        .executable(name: "GitBar", targets: ["GitBar"])
     ],
     targets: [
         .executableTarget(
-            name: "ProjectBar",
-            path: "Sources/ProjectBar"
+            name: "GitBar",
+            path: "Sources/GitBar"
         )
     ]
 )

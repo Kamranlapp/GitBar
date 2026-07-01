@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP="$ROOT/ProjectBar.app"
-BUILD_DIR="${PROJECTBAR_BUILD_DIR:-/private/tmp/projectbar-build-$UID}"
-EXEC="$BUILD_DIR/release/ProjectBar"
+APP="$ROOT/GitBar.app"
+BUILD_DIR="${GITBAR_BUILD_DIR:-/private/tmp/gitbar-build-$UID}"
+EXEC="$BUILD_DIR/release/GitBar"
 
 cd "$ROOT"
 rm -rf "$BUILD_DIR"
@@ -12,8 +12,9 @@ swift build -c release --scratch-path "$BUILD_DIR"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$EXEC" "$APP/Contents/MacOS/ProjectBar"
-cp "$ROOT/GitSync.png" "$APP/Contents/Resources/GitSync.png"
+cp "$EXEC" "$APP/Contents/MacOS/GitBar"
+cp "$ROOT/GitBar.png" "$APP/Contents/Resources/GitBar.png"
+cp "$ROOT/GitBar.icns" "$APP/Contents/Resources/GitBar.icns"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -21,11 +22,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key>
-  <string>ProjectBar</string>
+  <string>GitBar</string>
+  <key>CFBundleIconFile</key>
+  <string>GitBar</string>
   <key>CFBundleIdentifier</key>
-  <string>local.projectbar</string>
+  <string>local.gitbar</string>
   <key>CFBundleName</key>
-  <string>ProjectBar</string>
+  <string>GitBar</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

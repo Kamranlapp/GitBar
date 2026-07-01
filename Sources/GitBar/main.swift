@@ -42,9 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func makeStatusBarIcon() -> NSImage? {
-        let sourceImage = Bundle.main.url(forResource: "GitSync", withExtension: "png")
+        let sourceImage = Bundle.main.url(forResource: "GitBar", withExtension: "png")
             .flatMap(NSImage.init(contentsOf:))
-            ?? NSImage(systemSymbolName: "terminal", accessibilityDescription: "ProjectBar")
+            ?? NSImage(systemSymbolName: "terminal", accessibilityDescription: "GitBar")
         guard let sourceImage else { return nil }
 
         let size = NSSize(width: 18, height: 18)
@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         mainMenu.addItem(appMenuItem)
 
         let appMenu = NSMenu()
-        appMenu.addItem(NSMenuItem(title: "Quit ProjectBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appMenu.addItem(NSMenuItem(title: "Quit GitBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appMenuItem.submenu = appMenu
 
         let editMenuItem = NSMenuItem()
@@ -114,16 +114,6 @@ struct Project: Codable, Equatable, Identifiable {
     var devCommand: String
     var localhostURL: String
     var lastUsedAt: Date
-
-    static let sample = Project(
-        id: UUID(),
-        name: "Example Project",
-        path: NSHomeDirectory(),
-        repoURL: "",
-        devCommand: "npm run dev",
-        localhostURL: "http://localhost:3000",
-        lastUsedAt: Date.distantPast
-    )
 }
 
 final class ProjectStore {
@@ -212,7 +202,7 @@ final class ProjectStore {
     }
 }
 
-final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSMenuDelegate {
+final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenuDelegate {
     private let store: ProjectStore
     private let runner = CommandRunner()
 
@@ -231,6 +221,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
     private let statusLabel = NSTextField(labelWithString: "Ready")
     private let logView = NSTextView()
     private let projectMenu = NSMenu()
+    private let appControlMenu = NSMenu()
 
     private var orderedProjects: [Project] = []
     private var statusResetWorkItem: DispatchWorkItem?
@@ -397,6 +388,16 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         projectMenu.addItem(settingsItem)
         projectMenu.addItem(removeItem)
 
+        appControlMenu.autoenablesItems = false
+        let restartItem = NSMenuItem(title: "Restart", action: #selector(restartApp), keyEquivalent: "")
+        restartItem.target = self
+        restartItem.isEnabled = true
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "")
+        quitItem.target = self
+        quitItem.isEnabled = true
+        appControlMenu.addItem(restartItem)
+        appControlMenu.addItem(quitItem)
+
         let contentPanel = ContentPanelView()
         contentPanel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -442,7 +443,20 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         titleLabel.alignment = .right
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(titleLabel)
+
+        let powerButton = PowerButton(target: self, action: #selector(showAppControlMenu))
+        powerButton.toolTip = "App Controls"
+        powerButton.translatesAutoresizingMaskIntoConstraints = false
+
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let header = NSStackView(views: [powerButton, spacer, titleLabel])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 8
+        header.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(header)
 
         let contentPanel = ContentPanelView()
         contentPanel.translatesAutoresizingMaskIntoConstraints = false
@@ -460,7 +474,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         actionsStack.spacing = buttonVerticalSpacing
         [
             actionButton("Pull", #selector(runPull)),
-            actionButton("Push", #selector(runPush)),
+            actionButton("Commit & Push", #selector(runPush)),
             actionButton("Status", #selector(runStatus)),
             actionButton("Open Git", #selector(openGit)),
             actionButton("Start LH", #selector(startLocalhost)),
@@ -491,14 +505,16 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
             divider.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             divider.widthAnchor.constraint(equalToConstant: 1),
 
-            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
-            titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: columnTopInset),
-            titleLabel.heightAnchor.constraint(equalToConstant: headerHeight),
+            header.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            header.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
+            header.topAnchor.constraint(equalTo: container.topAnchor, constant: columnTopInset),
+            header.heightAnchor.constraint(equalToConstant: headerHeight),
+            powerButton.widthAnchor.constraint(equalToConstant: 18),
+            powerButton.heightAnchor.constraint(equalToConstant: 18),
 
             contentPanel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: columnHorizontalInset),
             contentPanel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -columnHorizontalInset),
-            contentPanel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: headerContentSpacing),
+            contentPanel.topAnchor.constraint(equalTo: header.bottomAnchor, constant: headerContentSpacing),
             contentPanel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -columnBottomInset),
 
             contentStack.leadingAnchor.constraint(equalTo: contentPanel.leadingAnchor),
@@ -660,14 +676,14 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         if panel.runModal() == .OK, let url = panel.url {
             pathField.stringValue = url.path
             persistCurrentFields()
-            setStatus("Project path updated")
+            setStatus("Path updated")
         }
     }
 
     @objc private func removeProject() {
         store.removeSelected()
         reloadProjects()
-        setStatus("Project removed")
+        setStatus("Removed")
     }
 
     @objc private func openProjectSettings() {
@@ -675,7 +691,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         rootStack.isHidden = true
         settingsOverlay.isHidden = false
         view.window?.makeFirstResponder(nameField)
-        setStatus("Editing project settings")
+        setStatus("Settings")
     }
 
     @objc private func closeProjectSettings() {
@@ -697,18 +713,18 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
     @objc private func runPush() {
         persistCurrentFields()
         guard let project = currentProject() else {
-            setStatus("Add a project first")
+            setStatus("Add a project")
             return
         }
 
-        setStatus("Running sync...")
+        setStatus("Running sync")
         appendLog("$ git add -A && git commit && git push\n")
 
         runner.push(project: project) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let output):
-                    self?.setStatus("sync complete")
+                    self?.setStatus("Sync done")
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
                     self?.setStatus("sync failed")
@@ -722,14 +738,14 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
     @objc private func startLocalhost() {
         persistCurrentFields()
         guard let project = currentProject(), !project.devCommand.isEmpty else {
-            setStatus("No dev command")
+            setStatus("No dev")
             return
         }
         do {
             try runner.startServer(project: project) { [weak self] output in
                 self?.appendLog(output)
             }
-            setStatus("Localhost started")
+            setStatus("LH started")
             appendLog("$ \(project.devCommand)\n")
         } catch {
             setStatus("Start failed")
@@ -740,7 +756,24 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
     @objc private func stopLocalhost() {
         guard let project = currentProject() else { return }
         runner.stopServer(project: project)
-        setStatus("Localhost stopped")
+        setStatus("LH stopped")
+    }
+
+    @objc private func showAppControlMenu(_ sender: NSControl) {
+        appControlMenu.items.forEach { $0.isEnabled = true }
+        NSMenu.popUpContextMenu(appControlMenu, with: NSApp.currentEvent ?? NSEvent(), for: sender)
+    }
+
+    @objc private func restartApp() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-n", Bundle.main.bundleURL.path]
+        try? process.run()
+        NSApp.terminate(nil)
+    }
+
+    @objc private func quitApp() {
+        NSApp.terminate(nil)
     }
 
     @objc private func openGit() {
@@ -761,7 +794,7 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
         guard let project = currentProject(),
               let url = URL(string: project.localhostURL),
               !project.localhostURL.isEmpty else {
-            setStatus("No localhost URL")
+            setStatus("No LC url")
             return
         }
         NSWorkspace.shared.open(url)
@@ -771,18 +804,18 @@ final class PopoverViewController: NSViewController, NSTableViewDataSource, NSTa
     private func runShort(_ command: String, label: String) {
         persistCurrentFields()
         guard let project = currentProject() else {
-            setStatus("Add a project first")
+            setStatus("Add a project")
             return
         }
 
-        setStatus("Running \(label)...")
+        setStatus(label == "status" ? "Running..." : "Running \(label)...")
         appendLog("$ \(command)\n")
 
         runner.run(command, in: project.path) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let output):
-                    self?.setStatus("\(label) complete")
+                    self?.setStatus(label == "status" ? "Done" : "\(label) complete")
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
                     self?.setStatus("\(label) failed")
@@ -1060,6 +1093,72 @@ final class AddProjectButton: NSControl {
     }
 }
 
+final class PowerButton: NSControl {
+    private var isPressed = false
+
+    init(target: AnyObject?, action: Selector) {
+        super.init(frame: .zero)
+        self.target = target
+        self.action = action
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Stop Localhost")
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        let strokeColor = NSColor.labelColor.withAlphaComponent(isPressed ? 0.55 : 0.85)
+        strokeColor.setStroke()
+
+        let center = CGPoint(x: bounds.midX, y: bounds.midY + 0.3)
+        let radius: CGFloat = 6.1
+        let powerPath = NSBezierPath()
+        powerPath.lineWidth = 2.1
+        powerPath.lineCapStyle = .round
+        powerPath.appendArc(
+            withCenter: center,
+            radius: radius,
+            startAngle: 132,
+            endAngle: 408,
+            clockwise: false
+        )
+        powerPath.stroke()
+
+        let stemPath = NSBezierPath()
+        stemPath.lineWidth = 2.1
+        stemPath.lineCapStyle = .round
+        stemPath.move(to: CGPoint(x: center.x, y: bounds.maxY - 2.3))
+        stemPath.line(to: CGPoint(x: center.x, y: center.y + 1.2))
+        stemPath.stroke()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        isPressed = true
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        isPressed = false
+        needsDisplay = true
+
+        if bounds.contains(convert(event.locationInWindow, from: nil)), let action {
+            NSApp.sendAction(action, to: target, from: self)
+        }
+    }
+}
+
 enum CommandError: LocalizedError {
     case invalidPath(String)
     case notGitRepository(String)
@@ -1084,6 +1183,7 @@ enum CommandError: LocalizedError {
 }
 
 final class CommandRunner {
+    private let serversQueue = DispatchQueue(label: "GitBar.CommandRunner.servers")
     private var servers: [UUID: Process] = [:]
 
     func run(_ command: String, in path: String, completion: @escaping (Result<String, Error>) -> Void) {
@@ -1118,7 +1218,6 @@ final class CommandRunner {
     }
 
     func startServer(project: Project, output: @escaping (String) -> Void) throws {
-        guard servers[project.id] == nil else { throw CommandError.alreadyRunning }
         guard FileManager.default.fileExists(atPath: project.path) else {
             throw CommandError.invalidPath(project.path)
         }
@@ -1137,23 +1236,38 @@ final class CommandRunner {
             output(text)
         }
 
-        process.terminationHandler = { [weak self] _ in
-            self?.servers[project.id] = nil
+        process.terminationHandler = { [weak self, weak process] _ in
+            self?.serversQueue.async { [weak self] in
+                guard let self, let process else { return }
+                if self.servers[project.id] === process {
+                    self.servers[project.id] = nil
+                }
+            }
             pipe.fileHandleForReading.readabilityHandler = nil
         }
 
+        let didReserve = serversQueue.sync {
+            guard servers[project.id] == nil else { return false }
+            servers[project.id] = process
+            return true
+        }
+        guard didReserve else { throw CommandError.alreadyRunning }
+
         do {
             try process.run()
-            servers[project.id] = process
         } catch {
+            serversQueue.sync {
+                if servers[project.id] === process {
+                    servers[project.id] = nil
+                }
+            }
             throw CommandError.launchFailed(error.localizedDescription)
         }
     }
 
     func stopServer(project: Project) {
-        guard let process = servers[project.id] else { return }
+        guard let process = serversQueue.sync(execute: { servers.removeValue(forKey: project.id) }) else { return }
         process.terminate()
-        servers[project.id] = nil
     }
 
     private func runBlocking(_ command: String, in path: String) throws -> String {
@@ -1209,10 +1323,19 @@ final class CommandRunner {
           fi
           git commit -m "$commit_message"
         fi &&
+        if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+          echo 'Nothing to push yet. Add project files and try again.'
+          exit 0
+        fi &&
         if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
           git push
         else
-          git push -u origin HEAD
+          current_branch=$(git branch --show-current)
+          if [ -z "$current_branch" ]; then
+            current_branch=main
+            git branch -M "$current_branch"
+          fi
+          git push -u origin "$current_branch"
         fi
         """
     }
