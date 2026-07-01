@@ -14,13 +14,16 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$ROOT"
+export COPYFILE_DISABLE=1
 "$ROOT/build_app.sh"
 xattr -cr "$APP"
 mkdir -p "$STAGE_DIR"
 ditto --norsrc --noextattr "$APP" "$STAGE_DIR/GitBar.app"
+xattr -cr "$STAGE_DIR"
+dot_clean -m "$STAGE_DIR"
+find "$STAGE_DIR" -name "._*" -delete
 
 rm -f "$ROOT"/GitBar*.pkg "$COMPONENT_PKG"
-export COPYFILE_DISABLE=1
 pkgbuild \
   --root "$STAGE_DIR" \
   --install-location "/Applications" \

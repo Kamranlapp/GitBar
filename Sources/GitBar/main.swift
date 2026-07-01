@@ -1,11 +1,14 @@
 import AppKit
 
-private let columnWidth: CGFloat = 120
+private let columnWidth: CGFloat = 150
+private let rightColumnWidth: CGFloat = 160
+private let popoverWidth = columnWidth + rightColumnWidth
 private let columnContentWidth: CGFloat = columnWidth - 20
-private let actionButtonWidth: CGFloat = 100
+private let projectButtonWidth: CGFloat = columnContentWidth
+private let actionButtonWidth: CGFloat = 120
 private let controlHeight: CGFloat = 32
 private let buttonVerticalSpacing: CGFloat = 6
-private let actionButtonCount: CGFloat = 7
+private let actionButtonCount: CGFloat = 8
 private let contentVerticalInset: CGFloat = 8
 private let headerHeight: CGFloat = 18
 private let headerContentSpacing: CGFloat = 10
@@ -35,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         let controller = PopoverViewController(store: store)
         self.controller = controller
-        popover.contentSize = NSSize(width: columnWidth * 2, height: popoverHeight)
+        popover.contentSize = NSSize(width: popoverWidth, height: popoverHeight)
         popover.behavior = .transient
         popover.delegate = self
         popover.contentViewController = controller
@@ -209,6 +212,10 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     private let backgroundEffect = NSVisualEffectView()
     private let rootStack = NSStackView()
     private let settingsOverlay = NSView()
+    private let forceActionOverlay = NSView()
+    private let forceActionTitleLabel = NSTextField(labelWithString: "")
+    private let forceActionMessageLabel = NSTextField(labelWithString: "")
+    private var forceActionButton: GlassButton?
     private let projectStack = NSStackView()
     private let titleLabel = NSTextField(labelWithString: "Actions")
     private let settingsStack = NSStackView()
@@ -224,7 +231,13 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     private let appControlMenu = NSMenu()
 
     private var orderedProjects: [Project] = []
+    private var pendingForceAction: PendingForceAction?
     private var statusResetWorkItem: DispatchWorkItem?
+
+    private enum PendingForceAction {
+        case push(Project)
+        case pull(Project)
+    }
 
     init(store: ProjectStore) {
         self.store = store
@@ -236,7 +249,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     }
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: columnWidth * 2, height: popoverHeight))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: popoverWidth, height: popoverHeight))
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.clear.cgColor
         buildBackground()
@@ -284,10 +297,11 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
 
         NSLayoutConstraint.activate([
             left.widthAnchor.constraint(equalToConstant: columnWidth),
-            right.widthAnchor.constraint(equalTo: left.widthAnchor)
+            right.widthAnchor.constraint(equalToConstant: rightColumnWidth)
         ])
 
         buildSettingsOverlay()
+        buildForceActionOverlay()
     }
 
     private func buildSettingsOverlay() {
@@ -356,6 +370,68 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         ])
     }
 
+    private func buildForceActionOverlay() {
+        forceActionOverlay.translatesAutoresizingMaskIntoConstraints = false
+        forceActionOverlay.isHidden = true
+        forceActionOverlay.wantsLayer = true
+        forceActionOverlay.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.42).cgColor
+        view.addSubview(forceActionOverlay)
+
+        let panel = ContentPanelView()
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 0.98).cgColor
+        forceActionOverlay.addSubview(panel)
+
+        forceActionTitleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        forceActionTitleLabel.textColor = NSColor(calibratedWhite: 0.08, alpha: 1)
+        forceActionTitleLabel.alignment = .center
+        forceActionTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        forceActionMessageLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        forceActionMessageLabel.textColor = NSColor(calibratedWhite: 0.34, alpha: 1)
+        forceActionMessageLabel.alignment = .center
+        forceActionMessageLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let cancelButton = actionButton("Cancel", #selector(cancelForceAction), width: 108)
+        let forceButton = actionButton("Force Push", #selector(confirmForceAction), width: 108)
+        forceActionButton = forceButton
+
+        let buttonRow = NSStackView(views: [cancelButton, forceButton])
+        buttonRow.orientation = .horizontal
+        buttonRow.alignment = .centerY
+        buttonRow.spacing = 8
+        buttonRow.translatesAutoresizingMaskIntoConstraints = false
+
+        panel.addSubview(forceActionTitleLabel)
+        panel.addSubview(forceActionMessageLabel)
+        panel.addSubview(buttonRow)
+
+        NSLayoutConstraint.activate([
+            forceActionOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            forceActionOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            forceActionOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+            forceActionOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            panel.leadingAnchor.constraint(equalTo: forceActionOverlay.leadingAnchor, constant: 18),
+            panel.trailingAnchor.constraint(equalTo: forceActionOverlay.trailingAnchor, constant: -18),
+            panel.centerYAnchor.constraint(equalTo: forceActionOverlay.centerYAnchor),
+            panel.heightAnchor.constraint(equalToConstant: 132),
+
+            forceActionTitleLabel.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 16),
+            forceActionTitleLabel.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -16),
+            forceActionTitleLabel.topAnchor.constraint(equalTo: panel.topAnchor, constant: 18),
+
+            forceActionMessageLabel.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 16),
+            forceActionMessageLabel.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -16),
+            forceActionMessageLabel.topAnchor.constraint(equalTo: forceActionTitleLabel.bottomAnchor, constant: 6),
+
+            buttonRow.centerXAnchor.constraint(equalTo: panel.centerXAnchor),
+            buttonRow.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -18),
+            cancelButton.heightAnchor.constraint(equalToConstant: controlHeight),
+            forceButton.heightAnchor.constraint(equalToConstant: controlHeight)
+        ])
+    }
+
     private func buildProjectColumn() -> NSView {
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -364,18 +440,19 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.translatesAutoresizingMaskIntoConstraints = false
 
+        let powerButton = PowerButton(target: self, action: #selector(showAppControlMenu))
+        powerButton.toolTip = "App Controls"
+        powerButton.translatesAutoresizingMaskIntoConstraints = false
+
         let addButton = AddProjectButton(target: self, action: #selector(addProject))
         addButton.toolTip = "Add Project"
         addButton.translatesAutoresizingMaskIntoConstraints = false
 
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-
-        let header = NSStackView(views: [title, spacer, addButton])
-        header.orientation = .horizontal
-        header.alignment = .centerY
-        header.spacing = 8
+        let header = NSView()
         header.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(powerButton)
+        header.addSubview(title)
+        header.addSubview(addButton)
 
         projectMenu.delegate = self
         projectMenu.autoenablesItems = false
@@ -415,6 +492,14 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
             header.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
             header.topAnchor.constraint(equalTo: container.topAnchor, constant: columnTopInset),
             header.heightAnchor.constraint(equalToConstant: headerHeight),
+            powerButton.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            powerButton.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            powerButton.widthAnchor.constraint(equalToConstant: 18),
+            powerButton.heightAnchor.constraint(equalToConstant: 18),
+            title.centerXAnchor.constraint(equalTo: header.centerXAnchor),
+            title.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            addButton.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+            addButton.centerYAnchor.constraint(equalTo: header.centerYAnchor),
             addButton.widthAnchor.constraint(equalToConstant: 18),
             addButton.heightAnchor.constraint(equalToConstant: 18),
 
@@ -444,14 +529,10 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         titleLabel.alignment = .right
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let powerButton = PowerButton(target: self, action: #selector(showAppControlMenu))
-        powerButton.toolTip = "App Controls"
-        powerButton.translatesAutoresizingMaskIntoConstraints = false
-
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let header = NSStackView(views: [powerButton, spacer, titleLabel])
+        let header = NSStackView(views: [spacer, titleLabel])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 8
@@ -473,6 +554,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         actionsStack.alignment = .centerX
         actionsStack.spacing = buttonVerticalSpacing
         [
+            actionButton("Clone", #selector(runClone)),
             actionButton("Pull", #selector(runPull)),
             actionButton("Commit & Push", #selector(runPush)),
             actionButton("Status", #selector(runStatus)),
@@ -509,8 +591,6 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
             header.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
             header.topAnchor.constraint(equalTo: container.topAnchor, constant: columnTopInset),
             header.heightAnchor.constraint(equalToConstant: headerHeight),
-            powerButton.widthAnchor.constraint(equalToConstant: 18),
-            powerButton.heightAnchor.constraint(equalToConstant: 18),
 
             contentPanel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: columnHorizontalInset),
             contentPanel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -columnHorizontalInset),
@@ -572,9 +652,9 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         return row
     }
 
-    private func actionButton(_ title: String, _ action: Selector) -> GlassButton {
+    private func actionButton(_ title: String, _ action: Selector, width: CGFloat = actionButtonWidth) -> GlassButton {
         let button = GlassButton(title: title, target: self, action: action)
-        button.widthAnchor.constraint(equalToConstant: actionButtonWidth).isActive = true
+        button.widthAnchor.constraint(equalToConstant: width).isActive = true
         button.heightAnchor.constraint(equalToConstant: controlHeight).isActive = true
         return button
     }
@@ -599,7 +679,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
 
         for (index, project) in orderedProjects.enumerated() {
             let button = ProjectButton(title: project.name, target: self, action: #selector(projectButtonClicked))
-            button.widthAnchor.constraint(equalToConstant: actionButtonWidth).isActive = true
+            button.widthAnchor.constraint(equalToConstant: projectButtonWidth).isActive = true
             button.heightAnchor.constraint(equalToConstant: controlHeight).isActive = true
             button.tag = index
             button.contextMenu = projectMenu
@@ -703,11 +783,84 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     }
 
     @objc private func runStatus() {
-        runShort("git status --short --branch", label: "status")
+        persistCurrentFields()
+        guard let project = currentProject() else {
+            setStatus("Add a project")
+            return
+        }
+
+        let command = "git fetch --quiet && git status --short --branch"
+        setStatus("Checking")
+        appendLog("$ \(command)\n")
+
+        runner.run(command, in: project.path) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let output):
+                    self?.setStatus(Self.shortGitStatus(from: output))
+                    self?.appendLog(output.isEmpty ? "(no output)\n" : output)
+                case .failure(let error):
+                    self?.setStatus("Status fail")
+                    self?.appendLog("\(error.localizedDescription)\n")
+                    self?.showCommandFailure(title: "status failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    @objc private func runClone() {
+        persistCurrentFields()
+        guard let project = currentProject() else {
+            setStatus("Add a project")
+            return
+        }
+
+        setStatus("Cloning...")
+        appendLog("$ git clone \(project.repoURL ?? "") \(project.path)\n")
+
+        runner.clone(project: project) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let output):
+                    self?.setStatus("Clone done")
+                    self?.appendLog(output.isEmpty ? "(no output)\n" : output)
+                case .failure(let error):
+                    self?.setStatus("clone failed")
+                    self?.appendLog("\(error.localizedDescription)\n")
+                    self?.showCommandFailure(title: "clone failed", message: error.localizedDescription)
+                }
+            }
+        }
     }
 
     @objc private func runPull() {
-        runShort("git pull --ff-only", label: "pull")
+        persistCurrentFields()
+        guard let project = currentProject() else {
+            setStatus("Add a project")
+            return
+        }
+
+        let command = Self.safePullCommand()
+        setStatus("Running pull...")
+        appendLog("$ \(command)\n")
+
+        runner.run(command, in: project.path) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let output):
+                    self?.setStatus("pull complete")
+                    self?.appendLog(output.isEmpty ? "(no output)\n" : output)
+                case .failure(let error):
+                    self?.setStatus("pull failed")
+                    self?.appendLog("\(error.localizedDescription)\n")
+                    if Self.isForcePullError(error.localizedDescription) {
+                        self?.showForcePullOverlay(for: project)
+                    } else {
+                        self?.showCommandFailure(title: "pull failed", message: error.localizedDescription)
+                    }
+                }
+            }
+        }
     }
 
     @objc private func runPush() {
@@ -729,10 +882,82 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
                 case .failure(let error):
                     self?.setStatus("sync failed")
                     self?.appendLog("\(error.localizedDescription)\n")
-                    self?.showCommandFailure(title: "sync failed", message: error.localizedDescription)
+                    if Self.isNonFastForwardPushError(error.localizedDescription) {
+                        self?.showForcePushOverlay(for: project)
+                    } else {
+                        self?.showCommandFailure(title: "sync failed", message: error.localizedDescription)
+                    }
                 }
             }
         }
+    }
+
+    @objc private func confirmForceAction() {
+        guard let action = pendingForceAction else {
+            hideForceActionOverlay()
+            return
+        }
+
+        hideForceActionOverlay()
+
+        switch action {
+        case .push(let project):
+            runForcePush(project)
+        case .pull(let project):
+            runForcePull(project)
+        }
+    }
+
+    private func runForcePush(_ project: Project) {
+        setStatus("Force pushing")
+        appendLog("$ git push --force\n")
+
+        runner.forcePush(project: project) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let output):
+                    self?.setStatus("Force pushed")
+                    self?.appendLog(output.isEmpty ? "(no output)\n" : output)
+                case .failure(let error):
+                    self?.setStatus("force failed")
+                    self?.appendLog("\(error.localizedDescription)\n")
+                    self?.showCommandFailure(title: "force push failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func runForcePull(_ project: Project) {
+        setStatus("Force pulling")
+        appendLog("$ git fetch && git reset --hard\n")
+
+        runner.forcePull(project: project) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let output):
+                    self?.setStatus("Force pulled")
+                    self?.appendLog(output.isEmpty ? "(no output)\n" : output)
+                case .failure(let error):
+                    self?.setStatus("force failed")
+                    self?.appendLog("\(error.localizedDescription)\n")
+                    self?.showCommandFailure(title: "force pull failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    @objc private func cancelForceAction() {
+        let status: String
+        switch pendingForceAction {
+        case .pull:
+            status = "Pull blocked"
+        case .push:
+            status = "Push blocked"
+        case nil:
+            status = "Cancelled"
+        }
+        hideForceActionOverlay()
+        setStatus(status)
     }
 
     @objc private func startLocalhost() {
@@ -799,6 +1024,71 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         }
         NSWorkspace.shared.open(url)
         setStatus("Open LH")
+    }
+
+    private static func safePullCommand() -> String {
+        "if ! git diff --quiet || ! git diff --cached --quiet; then echo \"Local changes found. Commit & Push before Pull:\"; git status --short; exit 1; fi; git pull --ff-only"
+    }
+
+    private static func shortGitStatus(from output: String) -> String {
+        let lines = output
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+        guard let branchLine = lines.first else { return "Synced" }
+
+        let hasChanges = lines.dropFirst().contains { line in
+            line.hasPrefix(" M") || line.hasPrefix("M ") || line.hasPrefix("A ") ||
+            line.hasPrefix("D ") || line.hasPrefix("R ") || line.hasPrefix("C ") ||
+            line.hasPrefix("UU") || line.hasPrefix("AA") || line.hasPrefix("DD") ||
+            line.hasPrefix("??")
+        }
+
+        if branchLine.contains("ahead") && branchLine.contains("behind") { return "Both changed" }
+        if branchLine.contains("behind") { return "Need Pull" }
+        if branchLine.contains("ahead") { return "Need Push" }
+        if hasChanges { return "Committed" }
+        return "Synced"
+    }
+
+    private static func isNonFastForwardPushError(_ message: String) -> Bool {
+        let lowercased = message.lowercased()
+        return lowercased.contains("non-fast-forward") ||
+            lowercased.contains("fetch first") ||
+            lowercased.contains("updates were rejected")
+    }
+
+    private static func isForcePullError(_ message: String) -> Bool {
+        let lowercased = message.lowercased()
+        return lowercased.contains("local changes found") ||
+            lowercased.contains("not possible to fast-forward") ||
+            lowercased.contains("divergent branches") ||
+            lowercased.contains("would be overwritten by merge") ||
+            lowercased.contains("need to specify how to reconcile")
+    }
+
+    private func showForcePushOverlay(for project: Project) {
+        pendingForceAction = .push(project)
+        forceActionTitleLabel.stringValue = "Git was updated."
+        forceActionMessageLabel.stringValue = "Force push?"
+        forceActionButton?.setTitle("Force Push")
+        settingsOverlay.isHidden = true
+        forceActionOverlay.isHidden = false
+        setStatus("Force push?")
+    }
+
+    private func showForcePullOverlay(for project: Project) {
+        pendingForceAction = .pull(project)
+        forceActionTitleLabel.stringValue = "Local was updated."
+        forceActionMessageLabel.stringValue = "Force pull?"
+        forceActionButton?.setTitle("Force Pull")
+        settingsOverlay.isHidden = true
+        forceActionOverlay.isHidden = false
+        setStatus("Force pull?")
+    }
+
+    private func hideForceActionOverlay() {
+        pendingForceAction = nil
+        forceActionOverlay.isHidden = true
     }
 
     private func runShort(_ command: String, label: String) {
@@ -959,9 +1249,16 @@ class GlassButton: NSControl {
         }
     }
 
+    func setTitle(_ title: String) {
+        titleLabel.stringValue = title
+        setAccessibilityLabel(title)
+    }
+
     private func setup(title: String) {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
+        layer?.cornerRadius = 8
+        layer?.masksToBounds = true
 
         effectView.material = .popover
         effectView.blendingMode = .withinWindow
@@ -1103,7 +1400,7 @@ final class PowerButton: NSControl {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
         setAccessibilityRole(.button)
-        setAccessibilityLabel("Stop Localhost")
+        setAccessibilityLabel("App Controls")
     }
 
     required init?(coder: NSCoder) {
@@ -1163,6 +1460,7 @@ enum CommandError: LocalizedError {
     case invalidPath(String)
     case notGitRepository(String)
     case missingRepoURL
+    case alreadyGitRepository(String)
     case alreadyRunning
     case launchFailed(String)
 
@@ -1174,6 +1472,8 @@ enum CommandError: LocalizedError {
             return "Not a git repository: \(path)"
         case .missingRepoURL:
             return "Repo URL is empty. Add a GitHub repo URL in Settings before first push."
+        case .alreadyGitRepository(let path):
+            return "Already a git repository: \(path)"
         case .alreadyRunning:
             return "Localhost is already running for this project."
         case .launchFailed(let message):
@@ -1197,6 +1497,24 @@ final class CommandRunner {
         }
     }
 
+    func clone(project: Project, completion: @escaping (Result<String, Error>) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                guard let repoURL = project.repoURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !repoURL.isEmpty else {
+                    throw CommandError.missingRepoURL
+                }
+                if self.isGitRepository(at: project.path) {
+                    throw CommandError.alreadyGitRepository(project.path)
+                }
+                let output = try self.runShell(Self.cloneCommand(repoURL: repoURL, path: project.path), in: "/")
+                completion(.success(output))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+
     func push(project: Project, completion: @escaping (Result<String, Error>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
@@ -1210,6 +1528,34 @@ final class CommandRunner {
                     }
                     output = try self.runShell(Self.initialPushCommand(repoURL: repoURL), in: project.path)
                 }
+                completion(.success(output))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+
+    func forcePush(project: Project, completion: @escaping (Result<String, Error>) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                guard self.isGitRepository(at: project.path) else {
+                    throw CommandError.notGitRepository(project.path)
+                }
+                let output = try self.runShell(Self.existingRepositoryForcePushCommand(repoURL: project.repoURL), in: project.path)
+                completion(.success(output))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+
+    func forcePull(project: Project, completion: @escaping (Result<String, Error>) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                guard self.isGitRepository(at: project.path) else {
+                    throw CommandError.notGitRepository(project.path)
+                }
+                let output = try self.runShell(Self.forcePullCommand(repoURL: project.repoURL), in: project.path)
                 completion(.success(output))
             } catch {
                 completion(.failure(error))
@@ -1278,6 +1624,15 @@ final class CommandRunner {
         return try runShell(command, in: path)
     }
 
+    private static func cloneCommand(repoURL: String, path: String) -> String {
+        "git clone \(shellSingleQuoted(repoURL)) \(shellSingleQuoted(path))"
+    }
+
+    private static func shellSingleQuoted(_ value: String) -> String {
+        let quote = String(UnicodeScalar(39)!)
+        return quote + value.replacingOccurrences(of: quote, with: quote + "\\" + quote + quote) + quote
+    }
+
     private func runShell(_ command: String, in path: String) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -1311,6 +1666,71 @@ final class CommandRunner {
           git remote add origin '\(escapedRepoURL)'
         fi &&
         \(syncPushCommand())
+        """
+    }
+
+    private static func existingRepositoryForcePushCommand(repoURL: String?) -> String {
+        let remoteSetup: String
+        if let repoURL = repoURL?.trimmingCharacters(in: .whitespacesAndNewlines), !repoURL.isEmpty {
+            let escapedRepoURL = repoURL.replacingOccurrences(of: "'", with: "'\\''")
+            remoteSetup = """
+            if git remote get-url origin >/dev/null 2>&1; then
+              git remote set-url origin '\(escapedRepoURL)'
+            else
+              git remote add origin '\(escapedRepoURL)'
+            fi &&
+            """
+        } else {
+            remoteSetup = ""
+        }
+
+        return """
+        \(remoteSetup)
+        if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+          echo 'Nothing to push yet. Add project files and try again.'
+          exit 0
+        fi &&
+        current_branch=$(git branch --show-current)
+        if [ -z "$current_branch" ]; then
+          current_branch=main
+          git branch -M "$current_branch"
+        fi &&
+        if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
+          git push --force
+        else
+          git push --force -u origin "$current_branch"
+        fi
+        """
+    }
+
+    private static func forcePullCommand(repoURL: String?) -> String {
+        let remoteSetup: String
+        if let repoURL = repoURL?.trimmingCharacters(in: .whitespacesAndNewlines), !repoURL.isEmpty {
+            let escapedRepoURL = repoURL.replacingOccurrences(of: "'", with: "'\\''")
+            remoteSetup = """
+            if git remote get-url origin >/dev/null 2>&1; then
+              git remote set-url origin '\(escapedRepoURL)'
+            else
+              git remote add origin '\(escapedRepoURL)'
+            fi &&
+            """
+        } else {
+            remoteSetup = ""
+        }
+
+        return """
+        \(remoteSetup)
+        current_branch=$(git branch --show-current)
+        if [ -z "$current_branch" ]; then
+          echo 'Cannot force pull while HEAD is detached.'
+          exit 1
+        fi &&
+        git fetch origin "$current_branch" &&
+        if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
+          git reset --hard @{u}
+        else
+          git reset --hard "origin/$current_branch"
+        fi
         """
     }
 
