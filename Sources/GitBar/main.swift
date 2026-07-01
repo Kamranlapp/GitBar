@@ -1202,7 +1202,7 @@ final class CommandRunner {
             do {
                 let output: String
                 if self.isGitRepository(at: project.path) {
-                    output = try self.runShell(Self.syncPushCommand(), in: project.path)
+                    output = try self.runShell(Self.existingRepositoryPushCommand(repoURL: project.repoURL), in: project.path)
                 } else {
                     guard let repoURL = project.repoURL?.trimmingCharacters(in: .whitespacesAndNewlines),
                           !repoURL.isEmpty else {
@@ -1297,6 +1297,21 @@ final class CommandRunner {
             return output
         }
         throw CommandError.launchFailed(output.isEmpty ? "Command failed with code \(process.terminationStatus)" : output)
+    }
+
+    private static func existingRepositoryPushCommand(repoURL: String?) -> String {
+        guard let repoURL = repoURL?.trimmingCharacters(in: .whitespacesAndNewlines), !repoURL.isEmpty else {
+            return syncPushCommand()
+        }
+        let escapedRepoURL = repoURL.replacingOccurrences(of: "'", with: "'\\''")
+        return """
+        if git remote get-url origin >/dev/null 2>&1; then
+          git remote set-url origin '\(escapedRepoURL)'
+        else
+          git remote add origin '\(escapedRepoURL)'
+        fi &&
+        \(syncPushCommand())
+        """
     }
 
     private static func initialPushCommand(repoURL: String) -> String {
