@@ -1,4 +1,4 @@
-# ProjectBar Test
+# ProjectBar
 
 ProjectBar is a tiny macOS menu bar app for running project commands without opening Terminal.
 
