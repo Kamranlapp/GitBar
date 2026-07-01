@@ -1201,7 +1201,13 @@ final class CommandRunner {
         if git diff --cached --quiet; then
           echo 'No local changes to commit.'
         else
-          git commit -m 'Sync changes'
+          changed_count=$(git diff --cached --name-only | wc -l | tr -d ' ')
+          if [ "$changed_count" = "1" ]; then
+            commit_message="Update $(basename "$(git diff --cached --name-only | head -n 1)")"
+          else
+            commit_message="Update $changed_count files"
+          fi
+          git commit -m "$commit_message"
         fi &&
         if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
           git push
