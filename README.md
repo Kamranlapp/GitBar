@@ -41,10 +41,25 @@ The package installs `GitBar.app` into `/Applications`. Installer packages are l
 
 ## Actions
 
-- `Status`: `git status --short --branch`
-- `Pull`: `git pull --ff-only`
+- `Status`: fetches remote updates, then reads `git status --short --branch`
+- `Pull`: runs a fast-forward pull, then removes ordinary untracked files so the working tree matches Git
 - `Commit & Push`: automatically stages normal non-ignored files, creates a commit, then pushes it
 - `Start LH`: runs the configured dev command, default `npm run dev`
 - `Stop LH`: terminates the started dev process
 - `Open Git`: opens the configured repository URL
 - `Open LH`: opens the configured localhost URL, default `http://localhost:3000`
+
+## Statuses
+
+- `Synced`: local branch, remote branch, and ordinary tracked/untracked files match.
+- `Changed`: local files have changes that are not committed yet.
+- `Need Pull`: GitHub has commits that are not local yet.
+- `Need Push`: local commits exist that are not on GitHub yet.
+- `Both Changed`: local and remote branches both have new commits.
+- `Status Fail`: status check failed.
+- `Add A Project`: no project is selected.
+
+## Conflict Actions
+
+- `Force Pull`: fetches the current remote branch, resets local tracked files to it, and removes ordinary untracked files. Ignored files from `.gitignore` are left alone.
+- `Force Push`: force-pushes local commits when GitHub has changed and the user confirms the overlay.

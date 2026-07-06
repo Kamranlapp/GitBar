@@ -737,7 +737,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         if panel.runModal() == .OK, let url = panel.url {
             _ = store.add(path: url.path)
             reloadProjects()
-            setStatus("Project added")
+            setStatus("Project Added")
         }
     }
 
@@ -756,7 +756,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         if panel.runModal() == .OK, let url = panel.url {
             pathField.stringValue = url.path
             persistCurrentFields()
-            setStatus("Path updated")
+            setStatus("Path Updated")
         }
     }
 
@@ -785,7 +785,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     @objc private func runStatus() {
         persistCurrentFields()
         guard let project = currentProject() else {
-            setStatus("Add a project")
+            setStatus("Add A Project")
             return
         }
 
@@ -800,7 +800,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
                     self?.setStatus(Self.shortGitStatus(from: output))
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
-                    self?.setStatus("Status fail")
+                    self?.setStatus("Status Fail")
                     self?.appendLog("\(error.localizedDescription)\n")
                     self?.showCommandFailure(title: "status failed", message: error.localizedDescription)
                 }
@@ -811,7 +811,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     @objc private func runClone() {
         persistCurrentFields()
         guard let project = currentProject() else {
-            setStatus("Add a project")
+            setStatus("Add A Project")
             return
         }
 
@@ -822,10 +822,10 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
             DispatchQueue.main.async {
                 switch result {
                 case .success(let output):
-                    self?.setStatus("Clone done")
+                    self?.setStatus("Clone Done")
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
-                    self?.setStatus("clone failed")
+                    self?.setStatus("Clone Failed")
                     self?.appendLog("\(error.localizedDescription)\n")
                     self?.showCommandFailure(title: "clone failed", message: error.localizedDescription)
                 }
@@ -836,22 +836,22 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     @objc private func runPull() {
         persistCurrentFields()
         guard let project = currentProject() else {
-            setStatus("Add a project")
+            setStatus("Add A Project")
             return
         }
 
         let command = Self.safePullCommand()
-        setStatus("Running pull...")
+        setStatus("Running Pull...")
         appendLog("$ \(command)\n")
 
         runner.run(command, in: project.path) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let output):
-                    self?.setStatus("pull complete")
+                    self?.setStatus("Pull Complete")
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
-                    self?.setStatus("pull failed")
+                    self?.setStatus("Pull Failed")
                     self?.appendLog("\(error.localizedDescription)\n")
                     if Self.isForcePullError(error.localizedDescription) {
                         self?.showForcePullOverlay(for: project)
@@ -866,21 +866,21 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     @objc private func runPush() {
         persistCurrentFields()
         guard let project = currentProject() else {
-            setStatus("Add a project")
+            setStatus("Add A Project")
             return
         }
 
-        setStatus("Running sync")
+        setStatus("Running Sync")
         appendLog("$ git add -A && git commit && git push\n")
 
         runner.push(project: project) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let output):
-                    self?.setStatus("Sync done")
+                    self?.setStatus("Sync Done")
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
-                    self?.setStatus("sync failed")
+                    self?.setStatus("Sync Failed")
                     self?.appendLog("\(error.localizedDescription)\n")
                     if Self.isNonFastForwardPushError(error.localizedDescription) {
                         self?.showForcePushOverlay(for: project)
@@ -909,17 +909,17 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     }
 
     private func runForcePush(_ project: Project) {
-        setStatus("Force pushing")
+        setStatus("Force Pushing")
         appendLog("$ git push --force\n")
 
         runner.forcePush(project: project) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let output):
-                    self?.setStatus("Force pushed")
+                    self?.setStatus("Force Pushed")
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
-                    self?.setStatus("force failed")
+                    self?.setStatus("Force Failed")
                     self?.appendLog("\(error.localizedDescription)\n")
                     self?.showCommandFailure(title: "force push failed", message: error.localizedDescription)
                 }
@@ -928,17 +928,17 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     }
 
     private func runForcePull(_ project: Project) {
-        setStatus("Force pulling")
+        setStatus("Force Pulling")
         appendLog("$ git fetch && git reset --hard\n")
 
         runner.forcePull(project: project) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let output):
-                    self?.setStatus("Force pulled")
+                    self?.setStatus("Force Pulled")
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
-                    self?.setStatus("force failed")
+                    self?.setStatus("Force Failed")
                     self?.appendLog("\(error.localizedDescription)\n")
                     self?.showCommandFailure(title: "force pull failed", message: error.localizedDescription)
                 }
@@ -950,9 +950,9 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         let status: String
         switch pendingForceAction {
         case .pull:
-            status = "Pull blocked"
+            status = "Pull Blocked"
         case .push:
-            status = "Push blocked"
+            status = "Push Blocked"
         case nil:
             status = "Cancelled"
         }
@@ -963,17 +963,17 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     @objc private func startLocalhost() {
         persistCurrentFields()
         guard let project = currentProject(), !project.devCommand.isEmpty else {
-            setStatus("No dev")
+            setStatus("No Dev")
             return
         }
         do {
             try runner.startServer(project: project) { [weak self] output in
                 self?.appendLog(output)
             }
-            setStatus("LH started")
+            setStatus("LH Started")
             appendLog("$ \(project.devCommand)\n")
         } catch {
-            setStatus("Start failed")
+            setStatus("Start Failed")
             appendLog("\(error.localizedDescription)\n")
         }
     }
@@ -981,7 +981,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     @objc private func stopLocalhost() {
         guard let project = currentProject() else { return }
         runner.stopServer(project: project)
-        setStatus("LH stopped")
+        setStatus("LH Stopped")
     }
 
     @objc private func showAppControlMenu(_ sender: NSControl) {
@@ -1007,11 +1007,11 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
               let repoURL = project.repoURL,
               !repoURL.isEmpty,
               let url = URL(string: repoURL) else {
-            setStatus("No repo URL")
+            setStatus("No Repo URL")
             return
         }
         NSWorkspace.shared.open(url)
-        setStatus("Opened repo")
+        setStatus("Opened Repo")
     }
 
     @objc private func openLocalhost() {
@@ -1019,7 +1019,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         guard let project = currentProject(),
               let url = URL(string: project.localhostURL),
               !project.localhostURL.isEmpty else {
-            setStatus("No LC url")
+            setStatus("No LC URL")
             return
         }
         NSWorkspace.shared.open(url)
@@ -1027,7 +1027,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     }
 
     private static func safePullCommand() -> String {
-        "if ! git diff --quiet || ! git diff --cached --quiet; then echo \"Local changes found. Commit & Push before Pull:\"; git status --short; exit 1; fi; git pull --ff-only"
+        "if ! git diff --quiet || ! git diff --cached --quiet; then echo \"Local changes found. Commit & Push before Pull:\"; git status --short; exit 1; fi; git pull --ff-only && git clean -fd"
     }
 
     private static func shortGitStatus(from output: String) -> String {
@@ -1043,10 +1043,10 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
             line.hasPrefix("??")
         }
 
-        if branchLine.contains("ahead") && branchLine.contains("behind") { return "Both changed" }
+        if branchLine.contains("ahead") && branchLine.contains("behind") { return "Both Changed" }
         if branchLine.contains("behind") { return "Need Pull" }
         if branchLine.contains("ahead") { return "Need Push" }
-        if hasChanges { return "Committed" }
+        if hasChanges { return "Changed" }
         return "Synced"
     }
 
@@ -1073,7 +1073,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         forceActionButton?.setTitle("Force Push")
         settingsOverlay.isHidden = true
         forceActionOverlay.isHidden = false
-        setStatus("Force push?")
+        setStatus("Force Push?")
     }
 
     private func showForcePullOverlay(for project: Project) {
@@ -1083,7 +1083,7 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
         forceActionButton?.setTitle("Force Pull")
         settingsOverlay.isHidden = true
         forceActionOverlay.isHidden = false
-        setStatus("Force pull?")
+        setStatus("Force Pull?")
     }
 
     private func hideForceActionOverlay() {
@@ -1094,26 +1094,37 @@ final class PopoverViewController: NSViewController, NSTextFieldDelegate, NSMenu
     private func runShort(_ command: String, label: String) {
         persistCurrentFields()
         guard let project = currentProject() else {
-            setStatus("Add a project")
+            setStatus("Add A Project")
             return
         }
 
-        setStatus(label == "status" ? "Running..." : "Running \(label)...")
+        let titleLabel = Self.titleCasedStatus(label)
+        setStatus(label == "status" ? "Running..." : "Running \(titleLabel)...")
         appendLog("$ \(command)\n")
 
         runner.run(command, in: project.path) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let output):
-                    self?.setStatus(label == "status" ? "Done" : "\(label) complete")
+                    self?.setStatus(label == "status" ? "Done" : "\(titleLabel) Complete")
                     self?.appendLog(output.isEmpty ? "(no output)\n" : output)
                 case .failure(let error):
-                    self?.setStatus("\(label) failed")
+                    self?.setStatus("\(titleLabel) Failed")
                     self?.appendLog("\(error.localizedDescription)\n")
                     self?.showCommandFailure(title: "\(label) failed", message: error.localizedDescription)
                 }
             }
         }
+    }
+
+    private static func titleCasedStatus(_ text: String) -> String {
+        text
+            .split(separator: " ")
+            .map { word in
+                guard let first = word.first else { return "" }
+                return first.uppercased() + word.dropFirst()
+            }
+            .joined(separator: " ")
     }
 
     private func setStatus(_ text: String) {
@@ -1730,7 +1741,8 @@ final class CommandRunner {
           git reset --hard @{u}
         else
           git reset --hard "origin/$current_branch"
-        fi
+        fi &&
+        git clean -fd
         """
     }
 

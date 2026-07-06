@@ -29,6 +29,10 @@ pkgbuild \
   --install-location "/Applications" \
   --identifier "local.gitbar" \
   --version "0.1.0" \
+  --filter '\.DS_Store$' \
+  --filter '(^|/)CVS($|/)' \
+  --filter '(^|/)\.svn($|/)' \
+  --filter '(^|/)\._' \
   "$COMPONENT_PKG"
 
 productbuild \
