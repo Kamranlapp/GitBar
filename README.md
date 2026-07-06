@@ -28,7 +28,7 @@ The installer script creates:
 GitBarInstaller.pkg
 ```
 
-The package installs `GitBar.app` into `/Applications`. Installer packages are local build artifacts and are ignored by Git.
+The package installs `GitBar.app` into `/Applications`. Installer packages are local build artifacts and are ignored by Git
 
 ## Behavior
 
